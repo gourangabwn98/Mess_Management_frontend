@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Lock } from "lucide-react";
 
 const AUTH_EMAIL = "gourangabwn98@gmail.com";
-const AUTH_PASSWORD = "Gouranga#98";
+const AUTH_PASSWORD = "GourangA#98";
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState("");
