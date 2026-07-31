@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Pencil, Check, X, Search } from "lucide-react";
+import { Plus, Search, Eye, User } from "lucide-react";
 import { Card, EmptyState } from "./ui";
 import { fmtINR } from "../utils";
-import { membersApi } from "../api";
+import { membersApi, fileUrl } from "../api";
+import MemberViewModal from "./MemberViewModal";
 
 const emptyForm = {
   name: "",
@@ -18,9 +19,10 @@ export default function MembersTab({ members, refreshMembers }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState(members);
   const [form, setForm] = useState(emptyForm);
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [aadharImage, setAadharImage] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(emptyForm);
+  const [viewingMember, setViewingMember] = useState(null);
 
   useEffect(() => setResults(members), [members]);
 
@@ -41,43 +43,36 @@ export default function MembersTab({ members, refreshMembers }) {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      await membersApi.create(form);
+      const payload = { ...form };
+      if (profilePhoto) payload.profilePhoto = profilePhoto;
+      if (aadharImage) payload.aadharImage = aadharImage;
+      await membersApi.create(payload);
       setForm(emptyForm);
+      setProfilePhoto(null);
+      setAadharImage(null);
+      document.getElementById("profilePhotoInput").value = "";
+      document.getElementById("aadharImageInput").value = "";
       await refreshMembers();
     } finally {
       setSaving(false);
     }
   };
 
-  const startEdit = (m) => {
-    setEditingId(m._id);
-    setEditForm({
-      name: m.name || "",
-      phone: m.phone || "",
-      address: m.address || "",
-      fatherName: m.fatherName || "",
-      fatherPhone: m.fatherPhone || "",
-      rentAmount: m.rentAmount ?? "",
-      foodAmount: m.foodAmount ?? "",
-    });
-  };
-
-  const saveEdit = async () => {
-    await membersApi.update(editingId, editForm);
-    setEditingId(null);
+  // Called by the modal after an edit or delete so the list stays in sync.
+  const handleModalChanged = async (updatedMember, deletedId) => {
     await refreshMembers();
+    if (deletedId) {
+      setViewingMember(null);
+    } else if (updatedMember) {
+      setViewingMember(updatedMember);
+    }
   };
 
-  const remove = async (id) => {
-    await membersApi.remove(id);
-    await refreshMembers();
-  };
-
-  const field = (obj, setObj, key, placeholder, type = "text") => (
+  const field = (key, placeholder, type = "text") => (
     <input
       type={type}
-      value={obj[key]}
-      onChange={(e) => setObj({ ...obj, [key]: e.target.value })}
+      value={form[key]}
+      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
       placeholder={placeholder}
       className="font-body text-sm px-3 py-2 rounded border border-border bg-white focus:outline-none focus:ring-2 focus:ring-rule/40"
     />
@@ -87,18 +82,44 @@ export default function MembersTab({ members, refreshMembers }) {
     <div className="space-y-6">
       <Card className="p-5">
         <div className="font-display text-lg font-semibold mb-3 text-ink">Add a member</div>
-        <form onSubmit={submit} className="grid sm:grid-cols-3 gap-2">
-          {field(form, setForm, "name", "Full name")}
-          {field(form, setForm, "phone", "Phone number")}
-          {field(form, setForm, "address", "Address")}
-          {field(form, setForm, "fatherName", "Father's name")}
-          {field(form, setForm, "fatherPhone", "Father's phone")}
-          {field(form, setForm, "rentAmount", "Rent amount ₹", "number")}
-          {field(form, setForm, "foodAmount", "Food amount ₹", "number")}
+        <form onSubmit={submit} className="space-y-3">
+          <div className="grid sm:grid-cols-3 gap-2">
+            {field("name", "Full name")}
+            {field("phone", "Phone number")}
+            {field("address", "Address")}
+            {field("fatherName", "Father's name")}
+            {field("fatherPhone", "Father's phone")}
+            {field("rentAmount", "Rent amount ₹", "number")}
+            {field("foodAmount", "Food amount ₹", "number")}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs text-muted font-body block mb-1">Student profile photo</span>
+              <input
+                id="profilePhotoInput"
+                type="file"
+                accept="image/*"
+                onChange={(e) => setProfilePhoto(e.target.files?.[0] || null)}
+                className="font-body text-xs text-ink w-full file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-hover file:text-ink file:text-xs"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-muted font-body block mb-1">Aadhaar card image</span>
+              <input
+                id="aadharImageInput"
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => setAadharImage(e.target.files?.[0] || null)}
+                className="font-body text-xs text-ink w-full file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-hover file:text-ink file:text-xs"
+              />
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={saving}
-            className="sm:col-span-3 flex items-center justify-center gap-1.5 px-4 py-2 rounded bg-ink text-paper text-sm font-medium font-body hover:bg-inkSoft disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded bg-ink text-paper text-sm font-medium font-body hover:bg-inkSoft disabled:opacity-60"
           >
             <Plus size={16} /> {saving ? "Adding…" : "Add member"}
           </button>
@@ -126,53 +147,41 @@ export default function MembersTab({ members, refreshMembers }) {
         ) : (
           <ul className="divide-y divide-dashed divide-divider">
             {results.map((m) => (
-              <li key={m._id} className="py-3">
-                {editingId === m._id ? (
-                  <div className="space-y-2">
-                    <div className="grid sm:grid-cols-3 gap-2">
-                      {field(editForm, setEditForm, "name", "Full name")}
-                      {field(editForm, setEditForm, "phone", "Phone number")}
-                      {field(editForm, setEditForm, "address", "Address")}
-                      {field(editForm, setEditForm, "fatherName", "Father's name")}
-                      {field(editForm, setEditForm, "fatherPhone", "Father's phone")}
-                      {field(editForm, setEditForm, "rentAmount", "Rent amount ₹", "number")}
-                      {field(editForm, setEditForm, "foodAmount", "Food amount ₹", "number")}
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={saveEdit} className="p-1.5 rounded bg-good text-white"><Check size={15} /></button>
-                      <button onClick={() => setEditingId(null)} className="p-1.5 rounded bg-hover"><X size={15} /></button>
+              <li key={m._id} className="py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-hover border border-border overflow-hidden flex items-center justify-center shrink-0">
+                    {m.profilePhoto ? (
+                      <img src={fileUrl(m.profilePhoto)} alt={m.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <User size={16} className="text-muted" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-body text-sm font-medium text-ink truncate">{m.name}</div>
+                    <div className="font-num text-xs text-muted">
+                      Rent ₹{fmtINR(m.rentAmount)} · Food ₹{fmtINR(m.foodAmount)}
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-body text-sm">
-                      <div className="font-medium text-ink">{m.name}</div>
-                      <div className="text-xs text-muted mt-0.5 space-y-0.5">
-                        {m.phone && <div>Phone: {m.phone}</div>}
-                        {m.address && <div>Address: {m.address}</div>}
-                        {(m.fatherName || m.fatherPhone) && (
-                          <div>
-                            Father: {m.fatherName || "—"}
-                            {m.fatherPhone ? ` (${m.fatherPhone})` : ""}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-4 mt-1.5 font-num text-xs">
-                        <span className="text-ink">Rent: ₹{fmtINR(m.rentAmount)}</span>
-                        <span className="text-ink">Food: ₹{fmtINR(m.foodAmount)}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => startEdit(m)} className="p-1.5 rounded hover:bg-hover"><Pencil size={14} /></button>
-                      <button onClick={() => remove(m._id)} className="p-1.5 rounded hover:bg-red-100 text-rule"><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                )}
+                </div>
+                <button
+                  onClick={() => setViewingMember(m)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border text-sm font-body text-ink hover:bg-hover shrink-0"
+                >
+                  <Eye size={14} /> View
+                </button>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      {viewingMember && (
+        <MemberViewModal
+          member={viewingMember}
+          onClose={() => setViewingMember(null)}
+          onChanged={handleModalChanged}
+        />
+      )}
     </div>
   );
 }
