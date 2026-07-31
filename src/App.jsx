@@ -7,15 +7,35 @@ import MembersTab from "./components/MembersTab";
 import PaymentsTab from "./components/PaymentsTab";
 import ExpensesTab from "./components/ExpensesTab";
 import MenuTab from "./components/MenuTab";
+import Login from "./components/Login";
 import { TabButton } from "./components/ui";
 import { membersApi } from "./api";
 import { monthKey } from "./utils";
 
+const AUTH_STORAGE_KEY = "mess-ledger-auth";
+
 export default function App() {
+  const [authed, setAuthed] = useState(false);
+  const [checkedAuth, setCheckedAuth] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [month, setMonth] = useState(monthKey(new Date()));
   const [members, setMembers] = useState([]);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setAuthed(localStorage.getItem(AUTH_STORAGE_KEY) === "true");
+    setCheckedAuth(true);
+  }, []);
+
+  const handleLogin = () => {
+    localStorage.setItem(AUTH_STORAGE_KEY, "true");
+    setAuthed(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setAuthed(false);
+  };
 
   const refreshMembers = useCallback(async () => {
     try {
@@ -28,12 +48,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refreshMembers();
-  }, [refreshMembers]);
+    if (authed) refreshMembers();
+  }, [authed, refreshMembers]);
+
+  // Avoid a flash of the login page while we check localStorage
+  if (!checkedAuth) return null;
+
+  if (!authed) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <Header error={error} />
+      <Header error={error} onLogout={handleLogout} />
 
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 mt-4">
         <div className="flex gap-1 border-b border-border overflow-x-auto">
